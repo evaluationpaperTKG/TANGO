@@ -173,10 +173,10 @@ def setup_tKG(dataset, logger, embsize, scale, val_exist, input_step):
 
     if val_exist:
         return num_e, num_rel, train_timestamps, test_timestamps, val_timestamps, train_adj, test_adj, val_adj, \
-               train_triple, test_triple, val_triple, train_1nei, test_1nei, val_1nei, t_indep_trp, train_so2r, val_so2r, test_so2r
+               train_triple, test_triple, val_triple, train_1nei, test_1nei, val_1nei, t_indep_trp, train_so2r, val_so2r, test_so2r, ts_max #mod eval_paper_authors: return ts_max
         #return num_e, num_rel, train_node_feature, test_node_feature, val_node_feature, train_timestamps, test_timestamps, val_timestamps, train_adj, test_adj, val_adj, triples
     else:
-        return num_e, num_rel, train_timestamps, test_timestamps, train_adj, test_adj, train_triple, test_triple, train_1nei, test_1nei, t_indep_trp, train_so2r, test_so2r
+        return num_e, num_rel, train_timestamps, test_timestamps, train_adj, test_adj, train_triple, test_triple, train_1nei, test_1nei, t_indep_trp, train_so2r, test_so2r, ts_max #mod eval_paper_authors: return ts_max
         #return num_e, num_rel, train_node_feature, test_node_feature, train_timestamps, test_timestamps, train_adj, test_adj, triples
 
 def setup_tKG2(dataset, logger, embsize, scale, val_exist, input_step):

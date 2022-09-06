@@ -79,11 +79,13 @@ if __name__ == '__main__':
     parser.add_argument('--res', action='store_true', help='include residual MGCN layer')
     parser.add_argument('--rel_jump', action='store_true', help='include transition tensor')
     parser.add_argument('--induct_test', action='store_true', help='inductive link prediction')
-    parser.add_argument('--test', action='store_true', help='store to start the test, otherwise start training')
+    parser.add_argument('--test',default=True, action='store_true', help='store to start the test, otherwise start training')
+    parser.add_argument('--setting', type=str, default='static', help='which filter to use for train and evaluation, time static raw') #added eval_paper_authors
 
     args = parser.parse_args()
-    if not args.resume: args.name = args.name + '_' + time.strftime('%Y_%m_%d') + '_' + time.strftime('%H:%M:%S')
-
+    if not args.resume: args.name = args.dataset + args.setting + str(args.target_step)#modified eval_paper_authors to have all configurations for all models
+    else: args.name = args.dataset + args.setting + str(args.target_step) #modified eval_paper_authors: this should also be the name of the load path
+    print(args.name)
     logger = setup_logger(args.name)
 
 
@@ -91,6 +93,7 @@ if __name__ == '__main__':
         os.mkdir(modelpth)
 
     loadpth = modelpth + args.name
+ 
     device = args.device if torch.cuda.is_available() else 'cpu'
     args.device = device
 
@@ -104,10 +107,10 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     np.random.seed(0)
 
-    if args.dataset == 'ICEWS14':
-        val_exist = 0 # ICEWS14 does not have validation set
-    else:
-        val_exist = 1
+    # if args.dataset == 'ICEWS14': # modified eval_paper_authors: commented out because val exists also for ICEWS14 now.
+    #     val_exist = 0 # ICEWS14 does not have validation set
+    # else:
+    val_exist = 1
 
     if val_exist:
         if args.induct_test:
@@ -119,12 +122,12 @@ if __name__ == '__main__':
             induct_tar = None
 
             num_e, num_rel, train_timestamps, test_timestamps, val_timestamps, train_adj, test_adj, val_adj, train_triple, test_triple, val_triple, \
-            train_1nei, test_1nei, val_1nei, t_indep_trp, train_so2r, val_so2r, test_so2r = setup_tKG(args.dataset,
+            train_1nei, test_1nei, val_1nei, t_indep_trp, train_so2r, val_so2r, test_so2r, ts_max = setup_tKG(args.dataset,
                                                                                                       logger,
                                                                                                       args.initsize,
                                                                                                       args.scale,
                                                                                                       val_exist,
-                                                                                                      args.input_step)
+                                                                                                      args.input_step) #mod eval_paper_authors: return ts_max
             trainl, testl, vall = len(train_timestamps), len(test_timestamps)-args.input_step, len(val_timestamps)-args.input_step
             adjlist = load_adjmtx(args.dataset)
             train_adjmtx, test_adjmtx, val_adjmtx = adjlist[:trainl], adjlist[trainl+vall-args.input_step:], adjlist[trainl-args.input_step:trainl+vall]
@@ -189,6 +192,12 @@ if __name__ == '__main__':
                                  shuffle=args.shuffle)
 
         if val_exist:
+            validation_target_step = args.target_step
+            if args.target_step > 1:
+                if args.target_step != len(val_timestamps): #modified eval_paper_authors because the number of timesteps in validation dataset is often smaller than the args.target_step (num timesteps in test set)
+                    validation_target_step = len(val_timestamps) #modified eval_paper_authors if we would do multistep prediction
+
+                    
             val_dataset = TANGOtestDataset(args,
                                             val_triple,
                                             val_adj,
@@ -196,7 +205,7 @@ if __name__ == '__main__':
                                             val_so2r,
                                             num_e,
                                             input_steps=args.input_step,
-                                            target_steps=args.target_step,
+                                            target_steps=validation_target_step, #added eval_paper_authors
                                             delta_steps=args.delta_step,
                                             time_stamps=val_timestamps,
                                             t_indep_trp=t_indep_trp)
@@ -271,10 +280,10 @@ if __name__ == '__main__':
             if (epoch+1) % args.test_step == 0:
                 if val_exist:
                     split = 'val'
-                    results = predict(val_loader, model, args, num_e, test_adjmtx, logger)
+                    results = predict(val_loader, model, args, num_e, test_adjmtx, logger,ts_max=ts_max, setting=args.setting) #modified eval_paper_authors: added setting for logging and ts_max
                 else:
                     split = 'test'
-                    results = predict(test_loader, model, args, num_e, test_adjmtx, logger)
+                    results = predict(test_loader, model, args, num_e, test_adjmtx, logger,ts_max=ts_max, setting=args.setting) #modified eval_paper_authors: added setting for logging and ts_max
 
                 print("===========RAW===========")
                 print("Epoch {}, HITS10 {}".format(epoch + 1, results['hits@10_raw']))
@@ -318,10 +327,19 @@ if __name__ == '__main__':
                 logger.info("Epoch {}, MRR {}".format(epoch + 1, results['mrr_ind']))
                 logger.info("Epoch {}, MAR {}".format(epoch + 1, results['mar_ind']))
 
-                if results['mrr'] > best_val_mrr:
+                # modified eval_paper_authors: include the different filter settings in training.
+                if args.setting == 'static':
+                    evaluation_results = results['mrr_ind'] 
+                elif args.setting == 'raw':
+                    evaluation_results = results['mrr_raw'] 
+                else:
+                    evaluation_results = results['mrr']  #default: use time aware filter
+                    # end mofidied
+
+                if evaluation_results > best_val_mrr:  #modified eval_paper_authors: instead of results['mrr'] 
                     # update best result
                     best_val = results
-                    best_val_mrr = results['mrr']
+                    best_val_mrr = evaluation_results #modified eval_paper_authors: instead of results['mrr'] 
                     best_epoch = epoch
                     save_model(model, args, best_val, best_epoch, optim, loadpth)
                     kill_cnt = 0
@@ -332,9 +350,9 @@ if __name__ == '__main__':
                         logger.info("Early Stopping!!")
                         break
 
-                print("========BEST MRR=========")
+                print("========BEST MRR=========" ) # modified eval_paper_authors: print acc. to filter setting chosen by user
                 print("Epoch {}, MRR {}".format(epoch + 1, best_val_mrr))
-                logger.info("========BEST MRR=========")
+                logger.info("========BEST MRR=========" )  # modified eval_paper_authors: print acc. to filter setting chosen by user
                 logger.info("Epoch {}, MRR {}".format(epoch + 1, best_val_mrr))
 
     else:
@@ -346,7 +364,7 @@ if __name__ == '__main__':
             logger.info("Start testing...")
         epoch = 0
         split = 'test'
-        results = predict(test_loader, model, args, num_e, test_adjmtx, logger)
+        results = predict(test_loader, model, args, num_e, test_adjmtx, logger, log_scores_flag=True, ts_max=ts_max, setting=args.setting) #mod eval_paper_authors: add log_scores_flag for logging scores, and ts_max for unscaling, add filter setting (for logging)
 
         print("===========RAW===========")
         print("Epoch {}, HITS10 {}".format(epoch + 1, results['hits@10_raw']))
