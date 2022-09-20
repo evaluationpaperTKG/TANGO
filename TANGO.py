@@ -79,7 +79,7 @@ if __name__ == '__main__':
     parser.add_argument('--res', action='store_true', help='include residual MGCN layer')
     parser.add_argument('--rel_jump', action='store_true', help='include transition tensor')
     parser.add_argument('--induct_test', action='store_true', help='inductive link prediction')
-    parser.add_argument('--test',default=True, action='store_true', help='store to start the test, otherwise start training')
+    parser.add_argument('--test', action='store_true', help='store to start the test, otherwise start training')
     parser.add_argument('--setting', type=str, default='static', help='which filter to use for train and evaluation, time static raw') #added eval_paper_authors
 
     args = parser.parse_args()
